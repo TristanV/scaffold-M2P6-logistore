@@ -1,0 +1,6 @@
+schema_version,sku,label,category,unit,min_stock,published_at
+1.0,SKU-00001,Marteau de charpentier,TOOLS,PCS,3,2024-01-15T08:00:00
+1.0,SKU-00002,Perceuse visseuse 18V,ELEC,PCS,2,2024-01-16T09:00:00
+1.0,SKU-00003,Farine de blé T55,FOOD,KG,10,2024-01-17T07:30:00
+1.0,SKU-00004,Jeans slim fit,CLOTHING,PCS,5,2024-01-18T10:00:00
+1.0,SKU-00005,Huile moteur 5W40,OTHER,L,8,2024-01-19T08:00:00

@@ -1,0 +1,7 @@
+schema_version,movement_id,sku,movement_type,quantity,reason,occurred_at
+1.0,550e8400-e29b-41d4-a716-446655440001,SKU-00001,IN,50,Réapprovisionnement fournisseur,2024-02-01T10:00:00
+1.0,550e8400-e29b-41d4-a716-446655440002,SKU-00002,IN,20,Commande initiale,2024-02-01T10:05:00
+1.0,550e8400-e29b-41d4-a716-446655440003,SKU-00001,OUT,-5,Livraison client 1042,2024-02-02T14:00:00
+1.0,550e8400-e29b-41d4-a716-446655440004,SKU-99999,IN,10,Produit inconnu (doit être rejeté),2024-02-03T09:00:00
+1.0,550e8400-e29b-41d4-a716-446655440005,SKU-00003,ADJUST,100,Inventaire annuel,2024-02-04T11:00:00
+1.0,550e8400-e29b-41d4-a716-446655440006,SKU-00001,OUT,5,ERREUR: OUT avec quantité positive (doit être rejeté),2024-02-05T08:00:00

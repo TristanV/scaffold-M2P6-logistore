@@ -1,0 +1,68 @@
+name: CI — Projet 6 LogiStore
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: Lint + Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: logistore
+          POSTGRES_USER: logistore
+          POSTGRES_PASSWORD: logistore
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: logistore
+      POSTGRES_USER: logistore
+      POSTGRES_PASSWORD: logistore
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 📦 Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: 🔍 Lint (Ruff)
+        run: ruff check .
+
+      - name: 🗄️ Init database schema
+        run: python scripts/load_to_postgres.py --init
+
+      - name: ✅ Tests — Contrats d'interface (Pydantic)
+        run: pytest tests/test_contracts.py -v --tb=short
+
+      - name: 🚫 Tests — Pipeline de rejet
+        run: pytest tests/test_rejection_pipeline.py -v --tb=short
+
+      - name: 🔄 Tests — Rejeu des mouvements rejetés
+        run: pytest tests/test_replay.py -v --tb=short
+
+      - name: 📊 Benchmark rapide (palier small, sans Airflow)
+        run: python scripts/benchmark_queries.py --palier small --ci
+
+      - name: 📈 Coverage report
+        run: pytest tests/ --cov=contracts --cov=scripts --cov-report=term-missing
