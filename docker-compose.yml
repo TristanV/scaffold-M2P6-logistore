@@ -39,17 +39,9 @@ services:
 
   airflow-init:
     <<: *airflow-common
-    command: >-
-      bash -c "
-        airflow db upgrade &&
-        airflow users create
-          --username admin
-          --firstname Admin
-          --lastname LogiStore
-          --role Admin
-          --email admin@logistore.local
-          --password admin
-      "
+    command: > 
+        bash -c "airflow db migrate && \
+                airflow users create --username admin --firstname Admin --lastname LogiStore --role Admin --email admin@logistore.local --password admin"
     restart: "no"
 
   airflow-webserver:
