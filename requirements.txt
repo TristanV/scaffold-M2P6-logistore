@@ -1,0 +1,19 @@
+# Core pipeline
+pydantic>=2.5.0
+duckdb>=1.0.0
+pandas>=2.0.0
+pyarrow>=14.0.0
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+Faker>=25.0.0
+
+# Airflow (installation locale hors Docker)
+# apache-airflow[postgres]==2.10.4
+
+# Tests & qualité
+pytest>=8.0.0
+pytest-cov>=5.0.0
+ruff>=0.5.0
+
+# Bonus dbt
+# dbt-duckdb>=1.9.0
