@@ -4,6 +4,7 @@ Ces tests vérifient que les modèles de validation fonctionnent
 correctement pour les cas nominaux et les cas d'erreur.
 """
 import pytest
+import os
 from datetime import datetime
 from pydantic import ValidationError
 
@@ -11,7 +12,10 @@ from contracts.catalogue_contract import (
     CatalogueRecordV1, CatalogueRecordV2, get_catalogue_contract
 )
 from contracts.movement_contract import MovementRecordV1, MovementTypeEnum
+from scripts.load_to_postgres import validate_flow
 
+
+DATA_DIR = os.path.join("tests","data")
 
 # ─── Tests CatalogueRecordV1 ───────────────────────────────────────────────
 
@@ -176,3 +180,53 @@ class TestMovementV1:
                 reason="Test",
                 occurred_at=datetime(2024, 2, 1)
             )
+
+# ─── Tests Flows ────────────────────────────────────────────────
+
+class TestValidateFlow:
+
+    def test_validate_catalogue_v1_flow(self):
+        valid_df, rejected_df = validate_flow(
+            os.path.join(DATA_DIR, "catalogue_test.csv"),
+            CatalogueRecordV2
+        )
+        # Tous les enregistrements V1 du fichier de test sont valides
+        assert len(valid_df) == 5
+        assert rejected_df.empty
+        assert set(valid_df["sku"]) == {
+            "SKU-00001",
+            "SKU-00002",
+            "SKU-00003",
+            "SKU-00004",
+            "SKU-00005",
+        }
+        assert set(valid_df["schema_version"]) == {"1.0"}
+
+    def test_validate_catalogue_v2_flow(self):
+        valid_df, rejected_df = validate_flow(
+            os.path.join(DATA_DIR , "catalogue_test_v2.csv"),
+            CatalogueRecordV2
+        )
+        # Deux lignes valides, une ligne rejetée (SKU mal formaté + min_stock négatif)
+        assert len(valid_df) == 2
+        assert all(valid_df["sku"].isin({"SKU-10001", "SKU-10002"}))
+        assert len(rejected_df) == 1
+        rejected_row = rejected_df.iloc[0]
+        assert rejected_row["sku"] == "SKU-1000X"
+        assert rejected_row["min_stock"] == -3
+        assert "sku" in rejected_row["rejection_reason"]
+        assert "min_stock" in rejected_row["rejection_reason"]
+
+    def test_validate_movement_v1_flow(self):
+        valid_df, rejected_df = validate_flow(
+            os.path.join(DATA_DIR, "movements_test.csv"),
+            MovementRecordV1
+        )
+        # Cinq mouvements respectent le contrat, un mouvement OUT avec quantity positive est rejeté
+        assert len(valid_df) == 5
+        assert len(rejected_df) == 1
+        rejected_row = rejected_df.iloc[0]
+        assert rejected_row["movement_id"] == "550e8400-e29b-41d4-a716-446655440006"
+        assert rejected_row["movement_type"] == "OUT"
+        assert rejected_row["quantity"] == 5
+        assert "quantity < 0" in rejected_row["rejection_reason"]
