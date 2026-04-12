@@ -10,6 +10,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
     PYTHONPATH: /opt/airflow
+    _PIP_ADDITIONAL_REQUIREMENTS: "duckdb>=1.0.0 pyarrow>=14.0.0 pydantic>=2.5.0"
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./contracts:/opt/airflow/contracts
@@ -54,6 +55,17 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  airflow_logs:
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
