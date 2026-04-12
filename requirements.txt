@@ -3,7 +3,7 @@ pydantic>=2.5.0
 duckdb>=1.0.0
 pandas>=2.0.0
 pyarrow>=14.0.0
-sqlalchemy>=2.0.0
+sqlalchemy>=1.4,<2.0.0
 psycopg2-binary>=2.9.0
 Faker>=25.0.0
 
