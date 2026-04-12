@@ -7,22 +7,37 @@ Ce DAG :
 3. Insère les produits valides dans PostgreSQL (UPSERT)
 4. Exporte le catalogue complet en Parquet (data/curated/catalogue_snapshot.parquet)
 5. Publie le Dataset Airflow pour déclencher automatiquement DAG 2
-
-TODO étudiant : implémenter les fonctions marquées TODO ci-dessous.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
+import psycopg2
+from psycopg2.extras import execute_values
+from pydantic import ValidationError
+
 from airflow.datasets import Dataset
 from airflow.decorators import dag, task
+
+from contracts.catalogue_contract import get_catalogue_contract
 
 # Dataset Airflow partagé avec DAG 2
 CATALOGUE_DATASET = Dataset("file:///opt/airflow/data/curated/catalogue_snapshot.parquet")
 
 DATA_INBOX = Path("/opt/airflow/data/inbox/catalogue")
 DATA_CURATED = Path("/opt/airflow/data/curated")
+DATA_REJECTED = Path("/opt/airflow/data/rejected/catalogue")
+
+DSN = {
+    "host": os.getenv("POSTGRES_HOST", "postgres"),
+    "port": int(os.getenv("POSTGRES_PORT", 5432)),
+    "dbname": os.getenv("POSTGRES_DB", "logistore"),
+    "user": os.getenv("POSTGRES_USER", "logistore"),
+    "password": os.getenv("POSTGRES_PASSWORD", "logistore"),
+}
 
 
 @dag(
@@ -48,33 +63,80 @@ def ingest_catalogue():
 
     @task
     def validate_and_upsert_catalogue(filepath: str | None) -> dict:
-        """
-        TODO étudiant :
-        1. Charger le fichier CSV filepath avec pandas
-        2. Pour chaque ligne, déterminer la version du contrat (schema_version)
-           et valider avec get_catalogue_contract(version)
-        3. Séparer les lignes valides des lignes invalides
-        4. Insérer/mettre à jour (UPSERT) les lignes valides dans PostgreSQL
-        5. Sauvegarder les lignes invalides dans data/rejected/catalogue/
-        6. Retourner un dict de stats : {valid: N, rejected: M}
-        """
+        """Valide le CSV catalogue avec Pydantic, UPSERT les valides dans PostgreSQL."""
         if not filepath:
             return {"valid": 0, "rejected": 0, "skipped": True}
-        # TODO : implémenter
-        raise NotImplementedError("validate_and_upsert_catalogue non implémenté")
+
+        df = pd.read_csv(filepath)
+        valid_records, rejected_records = [], []
+
+        for _, row in df.iterrows():
+            row_dict = row.to_dict()
+            # pandas lit schema_version comme float (1.0) ; Pydantic attend str "1.0"
+            row_dict["schema_version"] = str(row_dict.get("schema_version", "1.0"))
+            try:
+                version = row_dict["schema_version"]
+                model_class = get_catalogue_contract(version)
+                record = model_class(**row_dict)
+                valid_records.append(record.model_dump())
+            except (ValidationError, ValueError) as e:
+                row_dict["rejection_reason"] = str(e)
+                rejected_records.append(row_dict)
+
+        # UPSERT des lignes valides
+        if valid_records:
+            conn = psycopg2.connect(**DSN)
+            try:
+                with conn.cursor() as cur:
+                    sql = """
+                        INSERT INTO products (sku, label, category, unit, min_stock, supplier_id, published_at)
+                        VALUES %s
+                        ON CONFLICT (sku) DO UPDATE SET
+                            label = EXCLUDED.label,
+                            category = EXCLUDED.category,
+                            unit = EXCLUDED.unit,
+                            min_stock = EXCLUDED.min_stock,
+                            supplier_id = EXCLUDED.supplier_id,
+                            published_at = EXCLUDED.published_at
+                    """
+                    values = [
+                        (
+                            r["sku"], r["label"], r["category"], r["unit"],
+                            r["min_stock"], r.get("supplier_id"), r["published_at"],
+                        )
+                        for r in valid_records
+                    ]
+                    execute_values(cur, sql, values)
+                conn.commit()
+            finally:
+                conn.close()
+
+        # Sauvegarder les rejets
+        if rejected_records:
+            DATA_REJECTED.mkdir(parents=True, exist_ok=True)
+            pd.DataFrame(rejected_records).to_csv(
+                DATA_REJECTED / "catalogue_rejected.csv", index=False
+            )
+
+        stats = {"valid": len(valid_records), "rejected": len(rejected_records)}
+        print(f"Ingestion catalogue : {stats['valid']} insérés/mis à jour, {stats['rejected']} rejetés")
+        return stats
 
     @task(outlets=[CATALOGUE_DATASET])
     def export_catalogue_to_parquet(stats: dict) -> None:
-        """
-        TODO étudiant :
-        1. Lire tous les produits depuis PostgreSQL
-        2. Exporter en Parquet dans data/curated/catalogue_snapshot.parquet
-        3. Le décorateur outlets=[CATALOGUE_DATASET] déclenche automatiquement DAG 2
-        """
+        """Exporte la table products complète en Parquet pour déclencher DAG 2."""
         DATA_CURATED.mkdir(parents=True, exist_ok=True)
         print(f"Stats ingestion : {stats}")
-        # TODO : implémenter
-        raise NotImplementedError("export_catalogue_to_parquet non implémenté")
+
+        conn = psycopg2.connect(**DSN)
+        try:
+            df = pd.read_sql("SELECT * FROM products", conn)
+        finally:
+            conn.close()
+
+        parquet_path = DATA_CURATED / "catalogue_snapshot.parquet"
+        df.to_parquet(parquet_path, index=False)
+        print(f"Export Parquet : {len(df)} produits → {parquet_path}")
 
     # Chaînage des tâches
     filepath = detect_new_catalogue_file()
